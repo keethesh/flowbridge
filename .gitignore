@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+.env*
+*.har
+# generated media
+*.mp4
+*.jpg
+*.png
+out/

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowbridge"
+version = "0.1.0"
+description = "Unofficial API for Google Flow (Veo / Omni video, Nano Banana images) using your own subscription through your logged-in browser"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+flowbridge = "flowbridge.__main__:main"
+
+[tool.setuptools]
+packages = ["flowbridge"]
+
+[tool.setuptools.package-data]
+flowbridge = ["flow_page.js"]
