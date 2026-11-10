@@ -10,7 +10,9 @@ executed inside a real Flow tab (see flow_page.js); this module only drives that
 
     python -m flowbridge serve --port 8787   # HTTP API for other languages
 """
+import base64
 import json
+import mimetypes
 import os
 import shutil
 import subprocess
@@ -109,16 +111,32 @@ class Flow:
                 m["path"] = _download(m["url"], Path(out_dir) / f"{m['media_id']}.jpg")
         return res
 
-    def submit_video(self, prompt, model="macaron_cookie_t2v_8s_360p", aspect="16:9"):
-        """Spends credits. Returns {media_id, credits_left}. Model keys: see models()."""
-        return self._call("video", prompt=prompt, model=model, aspect=aspect)
+    def upload(self, path):
+        """Upload a local image into the project; returns its media_id (usable as a video frame)."""
+        p = Path(path)
+        return self._call("upload", data=base64.b64encode(p.read_bytes()).decode(),
+                          mime=mimetypes.guess_type(p.name)[0] or "image/jpeg", filename=p.name)
+
+    def _frame(self, x):
+        # local file -> upload it; anything else is taken as an existing Flow image media_id
+        return self.upload(x) if x and Path(x).is_file() else x
+
+    def submit_video(self, prompt, model=None, aspect="16:9", start_image=None, end_image=None):
+        """Spends credits. Returns {media_id, credits_left}.
+
+        start_image / end_image: local image path or Flow image media_id. start only = image-to-video,
+        start + end = first/last frame. model defaults per mode to Omni 1.2 Flash 8s 360p
+        (macaron_cookie_{t2v,i2v,i2v_fl}_8s_360p, 8 credits); other keys: models().
+        """
+        return self._call("video", prompt=prompt, model=model, aspect=aspect,
+                          start_image=self._frame(start_image), end_image=self._frame(end_image))
 
     def media(self, media_id, resolve=True):
         """{media_id, status: pending|success|failed|canceled, asb_url, url}; url is the IP-bound mp4 link."""
         return self._call("media", media_id=media_id, resolve=resolve)
 
-    def video(self, prompt, model="macaron_cookie_t2v_8s_360p", aspect="16:9", out=None, timeout=600, poll=8):
-        job = self.submit_video(prompt, model=model, aspect=aspect)
+    def video(self, prompt, model=None, aspect="16:9", start_image=None, end_image=None, out=None, timeout=600, poll=8):
+        job = self.submit_video(prompt, model=model, aspect=aspect, start_image=start_image, end_image=end_image)
         deadline = time.time() + timeout
         while True:
             m = self.media(job["media_id"], resolve=False)
@@ -157,6 +175,7 @@ def serve(port=8787, host="127.0.0.1"):
         ("GET", "/projects"): lambda b: flow.projects(),
         ("POST", "/projects"): lambda b: flow.create_project(b.get("title", "Flow API")),
         ("POST", "/images"): lambda b: flow.image(**b),
+        ("POST", "/uploads"): lambda b: flow.upload(b["path"]),
         ("POST", "/videos"): lambda b: flow.video(**b) if b.pop("wait", False) else flow.submit_video(**b),
     }
 
@@ -172,7 +191,7 @@ def serve(port=8787, host="127.0.0.1"):
                 else:
                     return self._send(404, {"error": "not found"})
                 self._send(200, out)
-            except (FlowError, TypeError, ValueError) as e:
+            except (FlowError, TypeError, ValueError, KeyError, OSError) as e:
                 self._send(400, {"error": str(e)})
 
         def _send(self, code, obj):

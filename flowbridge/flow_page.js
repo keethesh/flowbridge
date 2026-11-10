@@ -65,6 +65,20 @@ async (a) => {
     };
   }
 
+  // Frame reference: [null, mediaId, null, null, null, crop]. crop is the centre crop to the video
+  // aspect as fractions [top, left, bottom, right]; Flow sends null for 0.
+  async function frame(id, ar) {
+    const url = findStr(await rpc('as29s', [id]), 'https://flow-content.google/image/');
+    if (!url) throw new Error(`frame ${id} is not an image in this account`);
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const r = img.naturalWidth / img.naturalHeight, target = ar === VIDEO_AR['9:16'] ? 9 / 16 : 16 / 9;
+    const m = r > target ? (1 - target / r) / 2 : (1 - r / target) / 2;
+    const crop = r > target ? [null, m || null, 1, 1 - m] : [m || null, null, 1 - m, 1];
+    return [null, id, null, null, null, crop];
+  }
+
   switch (a.op) {
     case 'credits':
       return (await rpc('nzlxg', []))[0];
@@ -97,13 +111,27 @@ async (a) => {
       return d[0].map((m) => ({ media_id: m[0], url: findStr(m, 'https://flow-content.google/image/') }));
     }
 
+    case 'upload': {
+      const c = ctx(need('project'), await recaptcha('UPLOAD_IMAGE'));
+      const d = await rpc('maseQ', [c, need('data'), a.mime || 'image/jpeg', 1, null, null, null, null, a.filename || 'upload', null, uuid(), uuid()]);
+      return d[0][0];
+    }
+
     case 'video': {
       const project = need('project'), prompt = need('prompt');
-      const c = ctx(project, await recaptcha('VIDEO_GENERATION'));
       const ar = pick(VIDEO_AR, a.aspect || '16:9', 'video aspect');
-      const item = [[null, null, [[[prompt]]]], a.model || 'macaron_cookie_t2v_8s_360p', ar, null,
-        [null, null, null, null, uuid(), uuid()], null, null, [4]];
-      const d = await rpc('YhhmEf', [[item], c, [uuid(), 2]]);
+      const text = [null, null, [[[prompt]]]], ids = [null, null, null, null, uuid(), uuid()];
+      // text-only, start frame, and start+end frame each have their own RPC and item layout
+      let id, item;
+      if (!a.start_image) {
+        if (a.end_image) throw new Error('end_image needs start_image');
+        [id, item] = ['YhhmEf', [text, a.model || 'macaron_cookie_t2v_8s_360p', ar, null, ids, null, null, [4]]];
+      } else if (!a.end_image) {
+        [id, item] = ['eb1hJf', [text, a.model || 'macaron_cookie_i2v_8s_360p', ar, null, await frame(a.start_image, ar), ids, null, null, null, [4]]];
+      } else {
+        [id, item] = ['nprQif', [text, a.model || 'macaron_cookie_i2v_fl_8s_360p', ar, null, await frame(a.start_image, ar), await frame(a.end_image, ar), ids]];
+      }
+      const d = await rpc(id, [[item], ctx(project, await recaptcha('VIDEO_GENERATION')), [uuid(), 2]]);
       return { media_id: d[3][0][0], credits_left: d[1] };
     }
 

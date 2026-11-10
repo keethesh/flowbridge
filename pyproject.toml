@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flowbridge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Unofficial API for Google Flow (Veo / Omni video, Nano Banana images) using your own subscription through your logged-in browser"
 readme = "README.md"
 license = { text = "MIT" }
